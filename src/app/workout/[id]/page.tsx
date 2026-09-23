@@ -36,9 +36,9 @@ export default function WorkoutDetailsPage() {
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
 
+  const [editingSetId, setEditingSetId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
 
-  // Fetch workout
   const fetchWorkout = async () => {
     const { data, error } = await supabase
       .from("workouts")
@@ -54,7 +54,6 @@ export default function WorkoutDetailsPage() {
     setWorkout(data);
   };
 
-  // Fetch exercises
   const fetchExercises = async () => {
     const { data, error } = await supabase
       .from("exercises")
@@ -69,7 +68,6 @@ export default function WorkoutDetailsPage() {
     setExercises(data || []);
   };
 
-  // Fetch sets for this workout
   const fetchSets = async () => {
     const { data, error } = await supabase
       .from("workout_sets")
@@ -85,8 +83,7 @@ export default function WorkoutDetailsPage() {
     setSets(data || []);
   };
 
-  // Add a set
-  const handleAddSet = async () => {
+  const handleSaveSet = async () => {
     setMessage("");
 
     if (!selectedExercise) {
@@ -99,26 +96,86 @@ export default function WorkoutDetailsPage() {
       return;
     }
 
+    if (editingSetId) {
+      const { error } = await supabase
+        .from("workout_sets")
+        .update({
+          exercise_id: Number(selectedExercise),
+          weight: Number(weight),
+          reps: Number(reps),
+        })
+        .eq("id", editingSetId);
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+
+      setMessage("Set updated successfully!");
+      setEditingSetId(null);
+    } else {
+      const { error } = await supabase
+        .from("workout_sets")
+        .insert({
+          workout_id: Number(workoutId),
+          exercise_id: Number(selectedExercise),
+          weight: Number(weight),
+          reps: Number(reps),
+        });
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+
+      setMessage("Set added successfully!");
+    }
+
+    setSelectedExercise("");
+    setWeight("");
+    setReps("");
+
+    fetchSets();
+  };
+
+  const handleEditSet = (set: WorkoutSet) => {
+    setEditingSetId(set.id);
+    setSelectedExercise(String(set.exercise_id));
+    setWeight(String(set.weight));
+    setReps(String(set.reps));
+    setMessage("");
+  };
+
+  const handleDeleteSet = async (id: number) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this set?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
     const { error } = await supabase
       .from("workout_sets")
-      .insert({
-        workout_id: Number(workoutId),
-        exercise_id: Number(selectedExercise),
-        weight: Number(weight),
-        reps: Number(reps),
-      });
+      .delete()
+      .eq("id", id);
 
     if (error) {
       setMessage(error.message);
       return;
     }
 
+    setMessage("Set deleted successfully!");
+
+    fetchSets();
+  };
+
+  const handleCancelEdit = () => {
+    setEditingSetId(null);
+    setSelectedExercise("");
     setWeight("");
     setReps("");
-    setMessage("Set added successfully!");
-
-    // Refresh the set list
-    fetchSets();
+    setMessage("");
   };
 
   useEffect(() => {
@@ -139,6 +196,7 @@ export default function WorkoutDetailsPage() {
     <main className="min-h-screen p-8">
 
       {/* Workout Header */}
+
       <h1 className="text-4xl font-bold">
         {workout.name}
       </h1>
@@ -147,16 +205,16 @@ export default function WorkoutDetailsPage() {
         Date: {workout.workout_date}
       </p>
 
-      {/* Add Set */}
+      {/* Add / Edit Set */}
+
       <div className="mt-8 max-w-xl rounded-xl border p-6">
 
         <h2 className="mb-4 text-2xl font-bold">
-          Add Exercise Set
+          {editingSetId ? "Edit Set" : "Add Exercise Set"}
         </h2>
 
         <div className="space-y-4">
 
-          {/* Exercise */}
           <select
             value={selectedExercise}
             onChange={(e) => setSelectedExercise(e.target.value)}
@@ -176,7 +234,6 @@ export default function WorkoutDetailsPage() {
             ))}
           </select>
 
-          {/* Weight */}
           <input
             type="number"
             placeholder="Weight (kg)"
@@ -185,7 +242,6 @@ export default function WorkoutDetailsPage() {
             className="w-full rounded-lg border p-3"
           />
 
-          {/* Reps */}
           <input
             type="number"
             placeholder="Reps"
@@ -194,14 +250,27 @@ export default function WorkoutDetailsPage() {
             className="w-full rounded-lg border p-3"
           />
 
-          {/* Add Button */}
-          <button
-            type="button"
-            onClick={handleAddSet}
-            className="rounded-lg bg-black px-6 py-3 text-white"
-          >
-            Add Set
-          </button>
+          <div className="flex gap-3">
+
+            <button
+              type="button"
+              onClick={handleSaveSet}
+              className="rounded-lg bg-black px-6 py-3 text-white"
+            >
+              {editingSetId ? "Update Set" : "Add Set"}
+            </button>
+
+            {editingSetId && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="rounded-lg border px-6 py-3"
+              >
+                Cancel
+              </button>
+            )}
+
+          </div>
 
         </div>
 
@@ -214,6 +283,7 @@ export default function WorkoutDetailsPage() {
       </div>
 
       {/* Workout Sets */}
+
       <div className="mt-10">
 
         <h2 className="text-2xl font-bold">
@@ -250,6 +320,26 @@ export default function WorkoutDetailsPage() {
                   <p className="text-sm text-gray-500">
                     Volume: {set.weight * set.reps} kg
                   </p>
+
+                  <div className="mt-3 flex gap-3">
+
+                    <button
+                      type="button"
+                      onClick={() => handleEditSet(set)}
+                      className="rounded-lg border px-4 py-2"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteSet(set.id)}
+                      className="rounded-lg bg-red-600 px-4 py-2 text-white"
+                    >
+                      Delete
+                    </button>
+
+                  </div>
 
                 </div>
               );
